@@ -25,6 +25,7 @@
 #include "DetourMath.h"
 #include "DetourAlloc.h"
 #include "DetourAssert.h"
+#include <cstdio>
 #include <new>
 
 /// @class dtQueryFilter
@@ -1061,6 +1062,7 @@ dtStatus dtNavMeshQuery::findPath(dtPolyRef startRef, dtPolyRef endRef,
 			dtNode* neighbourNode = m_nodePool->getNode(neighbourRef, crossSide);
 			if (!neighbourNode)
 			{
+				printf("[dtNavMeshQuery::findPath] could not allocate node\n");
 				outOfNodes = true;
 				continue;
 			}
@@ -2034,7 +2036,7 @@ dtStatus dtNavMeshQuery::moveAlongSurface(dtPolyRef startRef, const float* start
 										  float* resultPos, dtPolyRef* visited, int* visitedCount, const int maxVisitedSize, bool allowSliding) const
 {
 	dtAssert(m_nav);
-	dtAssert(m_tinyNodePool);
+	dtAssert(m_nodePool);
 
 	if (!visitedCount)
 		return DT_FAILURE | DT_INVALID_PARAM;
@@ -2056,9 +2058,9 @@ dtStatus dtNavMeshQuery::moveAlongSurface(dtPolyRef startRef, const float* start
 	dtNode* stack[MAX_STACK];
 	int nstack = 0;
 	
-	m_tinyNodePool->clear();
+	m_nodePool->clear();
 	
-	dtNode* startNode = m_tinyNodePool->getNode(startRef);
+	dtNode* startNode = m_nodePool->getNode(startRef);
 	startNode->pidx = 0;
 	startNode->cost = 0;
 	startNode->total = 0;
@@ -2155,23 +2157,23 @@ dtStatus dtNavMeshQuery::moveAlongSurface(dtPolyRef startRef, const float* start
 
 				if (!allowSliding) 
 				{
-						float s, t;
-						if (dtIntersectSegSeg2D(vj, vi, startPos, endPos, s, t) 
-								&& t >= 0 && t <= 1 && s >= 0 && s <= 1)
-						{
-							// If sliding is not allowed, then the candidate end position will be
-							// where startPos -> endPos and vj -> vi intersect
-							float newPos[3];
-							dtVlerp(newPos, vj, vi, s);
-							const float distSqr = dtVdist2DSqr(newPos, endPos);
+					float s, t;
+					if (dtIntersectSegSeg2D(vj, vi, startPos, endPos, s, t) 
+							&& t >= 0 && t <= 1 && s >= 0 && s <= 1)
+					{
+						// If sliding is not allowed, then the candidate end position will be
+						// where startPos -> endPos and vj -> vi intersect
+						float newPos[3];
+						dtVlerp(newPos, vj, vi, s);
+						const float distSqr = dtVdist2DSqr(newPos, endPos);
 
-							if (distSqr < bestDist)
-							{
-								dtVcopy(bestPos, newPos);
-								bestDist = distSqr;
-								bestNode = curNode;
-							}
+						if (distSqr < bestDist)
+						{
+							dtVcopy(bestPos, newPos);
+							bestDist = distSqr;
+							bestNode = curNode;
 						}
+					}
 				} 
 				else 
 				{
@@ -2193,9 +2195,11 @@ dtStatus dtNavMeshQuery::moveAlongSurface(dtPolyRef startRef, const float* start
 				for (int k = 0; k < nneis; ++k)
 				{
 					// Skip if no node can be allocated.
-					dtNode* neighbourNode = m_tinyNodePool->getNode(neis[k]);
-					if (!neighbourNode)
+					dtNode* neighbourNode = m_nodePool->getNode(neis[k]);
+					if (!neighbourNode) {
+						printf("[dtNavMeshQuery::moveAlongSurface] could not allocate node.\n");
 						continue;
+					}
 					// Skip if already visited.
 					if (neighbourNode->flags & DT_NODE_CLOSED)
 						continue;
@@ -2224,9 +2228,11 @@ dtStatus dtNavMeshQuery::moveAlongSurface(dtPolyRef startRef, const float* start
 					// Mark as the node as visited and push to queue.
 					if (nstack < MAX_STACK)
 					{
-						neighbourNode->pidx = m_tinyNodePool->getNodeIdx(curNode);
+						neighbourNode->pidx = m_nodePool->getNodeIdx(curNode);
 						neighbourNode->flags |= DT_NODE_CLOSED;
 						stack[nstack++] = neighbourNode;
+					} else {
+						printf("[dtNavMeshQuery::moveAlongSurface] stack is full");
 					}
 				}
 			}
@@ -2241,8 +2247,8 @@ dtStatus dtNavMeshQuery::moveAlongSurface(dtPolyRef startRef, const float* start
 		dtNode* node = bestNode;
 		do
 		{
-			dtNode* next = m_tinyNodePool->getNodeAtIdx(node->pidx);
-			node->pidx = m_tinyNodePool->getNodeIdx(prev);
+			dtNode* next = m_nodePool->getNodeAtIdx(node->pidx);
+			node->pidx = m_nodePool->getNodeIdx(prev);
 			prev = node;
 			node = next;
 		}
@@ -2258,7 +2264,7 @@ dtStatus dtNavMeshQuery::moveAlongSurface(dtPolyRef startRef, const float* start
 				status |= DT_BUFFER_TOO_SMALL;
 				break;
 			}
-			node = m_tinyNodePool->getNodeAtIdx(node->pidx);
+			node = m_nodePool->getNodeAtIdx(node->pidx);
 		}
 		while (node);
 	}
